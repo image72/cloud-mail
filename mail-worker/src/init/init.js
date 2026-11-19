@@ -24,9 +24,32 @@ const dbInit = {
 		await this.v3_4DB(c);
 		await this.v3_5DB(c);
 		await this.v3_6DB(c);
+		await this.v3_7DB(c);
 		await userService.initAdmin(c);
 		await settingService.refresh(c);
 		return c.text('success');
+	},
+
+	async v3_7DB(c) {
+		try {
+			await c.env.db.prepare(`
+				CREATE TABLE IF NOT EXISTS passkey (
+					passkey_id INTEGER PRIMARY KEY AUTOINCREMENT,
+					user_id INTEGER NOT NULL,
+					credential_id TEXT NOT NULL,
+					public_key TEXT NOT NULL,
+					counter INTEGER NOT NULL DEFAULT 0,
+					transports TEXT NOT NULL DEFAULT '',
+					name TEXT NOT NULL DEFAULT '',
+					create_time DATETIME DEFAULT CURRENT_TIMESTAMP,
+					last_used_time DATETIME
+				)
+			`).run();
+			await c.env.db.prepare(`CREATE UNIQUE INDEX IF NOT EXISTS idx_passkey_credential_id ON passkey(credential_id)`).run();
+			await c.env.db.prepare(`CREATE INDEX IF NOT EXISTS idx_passkey_user_id ON passkey(user_id)`).run();
+		} catch (e) {
+			console.warn(`sql skip:${e.message}`);
+		}
 	},
 
 	async v3_6DB(c) {

@@ -31,6 +31,16 @@
           <el-button type="primary" @click="pwdShow = true">{{$t('changePwdBtn')}}</el-button>
         </div>
       </div>
+      <div class="item setting-row" v-if="passkeySupported">
+        <div>{{$t('passkeyTitle')}}</div>
+        <div class="passkey-cell">
+          <div v-for="item in passkeys" :key="item.passkeyId" class="passkey-row">
+            <span class="passkey-name" :title="item.name">{{ item.name || $t('passkeyUnnamed') }}</span>
+            <span class="passkey-delete" @click="removePasskey(item)">{{$t('delete')}}</span>
+          </div>
+          <el-button type="primary" :loading="passkeyAddLoading" @click="openPasskeyDialog">{{$t('passkeyAddBtn')}}</el-button>
+        </div>
+      </div>
     </div>
     <div class="language">
       <div class="title">{{$t('language')}}</div>
@@ -76,13 +86,21 @@
         <el-button type="primary" :loading="setPwdLoading" @click="submitPwd">{{$t('save')}}</el-button>
       </div>
     </el-dialog>
+    <el-dialog v-model="passkeyShow" :title="$t('passkeyAddTitle')" width="340" @closed="passkeyName = ''">
+      <div class="update-pwd">
+        <el-input v-model="passkeyName" :placeholder="$t('passkeyNamePlaceholder')" maxlength="100" @keyup.enter="addPasskey"/>
+        <el-button type="primary" :loading="passkeyAddLoading" @click="addPasskey">{{$t('save')}}</el-button>
+      </div>
+    </el-dialog>
   </div>
     </el-scrollbar>
   </div>
 </template>
 <script setup>
-import {reactive, ref, defineOptions} from 'vue'
+import {reactive, ref, defineOptions, onMounted} from 'vue'
 import {resetPassword, userDelete} from "@/request/my.js";
+import {passkeyList, passkeyRegisterOptions, passkeyRegisterVerify, passkeyDelete} from "@/request/passkey.js";
+import {startRegistration, browserSupportsWebAuthn} from "@simplewebauthn/browser";
 import {useUserStore} from "@/store/user.js";
 import router from "@/router/index.js";
 import {accountSetName} from "@/request/account.js";
@@ -161,6 +179,70 @@ const form = reactive({
   password: '',
   newPwd: '',
 })
+
+// ---- Passkey management ----
+const passkeySupported = browserSupportsWebAuthn()
+const passkeys = ref([])
+const passkeyShow = ref(false)
+const passkeyName = ref('')
+const passkeyAddLoading = ref(false)
+
+onMounted(() => {
+  if (passkeySupported) refreshPasskeys()
+})
+
+/** Reloads the passkey list from the server. */
+function refreshPasskeys() {
+  passkeyList().then(rows => {
+    passkeys.value = rows
+  }).catch(() => {})
+}
+
+/** Opens the "add passkey" dialog; the ceremony itself starts on save. */
+function openPasskeyDialog() {
+  passkeyName.value = ''
+  passkeyShow.value = true
+}
+
+/**
+ * Runs the WebAuthn registration ceremony: fetch server options, invoke the
+ * browser authenticator prompt, then submit the attestation for verification.
+ */
+function addPasskey() {
+  if (passkeyAddLoading.value) return
+  passkeyAddLoading.value = true
+  passkeyRegisterOptions().then(async ({challengeId, options}) => {
+    const credential = await startRegistration({optionsJSON: options})
+    await passkeyRegisterVerify(challengeId, passkeyName.value, credential)
+    ElMessage({message: t('passkeyAddSuccess'), type: 'success', plain: true})
+    passkeyShow.value = false
+    refreshPasskeys()
+  }).catch(e => {
+    if (e?.name === 'NotAllowedError') {
+      // User cancelled the authenticator prompt - not an error worth a toast.
+      return
+    }
+    if (e?.name) {
+      ElMessage({message: t('passkeyFailMsg'), type: 'error', plain: true})
+    }
+  }).finally(() => {
+    passkeyAddLoading.value = false
+  })
+}
+
+/** Deletes a passkey after user confirmation. */
+function removePasskey(item) {
+  ElMessageBox.confirm(t('passkeyDeleteConfirm'), {
+    confirmButtonText: t('confirm'),
+    cancelButtonText: t('cancel'),
+    type: 'warning'
+  }).then(() => {
+    passkeyDelete(item.passkeyId).then(() => {
+      ElMessage({message: t('saveSuccessMsg'), type: 'success', plain: true})
+      refreshPasskeys()
+    })
+  })
+}
 
 const deleteConfirm = () => {
   ElMessageBox.confirm(t('delAccountConfirm'), {
@@ -290,6 +372,33 @@ function submitPwd() {
         padding-left: 10px;
         white-space: nowrap;
         cursor: pointer;
+      }
+
+      .passkey-cell {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 10px;
+
+        .passkey-row {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          max-width: 100%;
+
+          .passkey-name {
+            min-width: 0;
+            overflow: hidden;
+            white-space: nowrap;
+            text-overflow: ellipsis;
+          }
+
+          .passkey-delete {
+            color: var(--el-color-danger);
+            white-space: nowrap;
+            cursor: pointer;
+          }
+        }
       }
 
     }

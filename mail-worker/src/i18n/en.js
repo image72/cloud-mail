@@ -74,6 +74,10 @@ const en = {
 	notAdmin: 'The entered email is not an administrator email',
 	emailExistDatabase: 'Email already exists in the database',
 	notConfigOss: 'Object storage not configured',
+	passkeyVerifyFail: 'Passkey verification failed, please try again',
+	passkeyChallengeExpired: 'Passkey session has expired, please try again',
+	passkeyExists: 'This passkey is already registered',
+	passkeyNotFound: 'No passkey is registered for this account',
 	perms: {
 		"邮件": "Emails",
 		"邮件发送": "Send email",
