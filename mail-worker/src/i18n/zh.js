@@ -74,6 +74,10 @@ const zh = {
 	notAdmin: '输入的邮箱不是管理员邮箱',
 	emailExistDatabase: '有邮箱已存在数据库中',
 	notConfigOss: '对象存储未配置',
+	passkeyVerifyFail: '通行密钥验证失败，请重试',
+	passkeyChallengeExpired: '通行密钥会话已过期，请重试',
+	passkeyExists: '该通行密钥已注册',
+	passkeyNotFound: '该账号尚未注册通行密钥',
 	perms: {
 		"邮件": "邮件",
 		"邮件发送": "邮件发送",
