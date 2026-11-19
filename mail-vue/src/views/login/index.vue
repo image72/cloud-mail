@@ -53,6 +53,10 @@
           <el-button class="btn" type="primary" @click="submit" :loading="loginLoading"
           >{{ $t('loginBtn') }}
           </el-button>
+          <el-button v-if="passkeySupported" class="btn" style="margin-top: 10px" :loading="passkeyLoading" @click="passkeyLogin">
+            <Icon icon="material-symbols:passkey" width="18" height="18" style="margin-right: 10px" />
+            {{ $t('passkeyLoginBtn') }}
+          </el-button>
           <el-button v-for="p in oauthProviders" :key="p.key" class="btn" style="margin-top: 10px" @click="oauthLogin(p.key)">
             <el-avatar v-if="p.iconType === 'image'" :src="p.icon" :size="18" style="margin-right: 10px" />
             <Icon v-else :icon="p.icon" width="18" height="18" style="margin-right: 10px" />
@@ -161,6 +165,8 @@ import {useRoute} from "vue-router";
 import {computed, nextTick, onBeforeUnmount, reactive, ref, watch} from "vue";
 import {login} from "@/request/login.js";
 import {register} from "@/request/login.js";
+import {passkeyLoginOptions, passkeyLoginVerify} from "@/request/passkey.js";
+import {startAuthentication, browserSupportsWebAuthn} from "@simplewebauthn/browser";
 import {websiteConfig} from "@/request/setting.js";
 import {isEmail} from "@/utils/verify-utils.js";
 import {useSettingStore} from "@/store/setting.js";
@@ -452,6 +458,59 @@ function bind() {
   })
 }
 
+// ---- Passkey login ----
+const passkeySupported = browserSupportsWebAuthn()
+const passkeyLoading = ref(false)
+
+/**
+ * Signs in with a passkey instead of a password. Reuses the email already
+ * typed into the login form ("username first, then passkey"): the account's
+ * registered credentials are fetched for that email, the browser prompt is
+ * shown, and the verified assertion is exchanged for a regular login token.
+ */
+const passkeyLogin = () => {
+  if (passkeyLoading.value) return
+
+  if (!form.email) {
+    ElMessage({
+      message: t('emptyEmailMsg'),
+      type: 'error',
+      plain: true,
+    })
+    return
+  }
+
+  const email = getFullEmail(form.email);
+
+  if (!isEmail(email)) {
+    ElMessage({
+      message: t('notEmailMsg'),
+      type: 'error',
+      plain: true,
+    })
+    return
+  }
+
+  passkeyLoading.value = true
+  passkeyLoginOptions(email).then(async ({challengeId, options}) => {
+    const credential = await startAuthentication({optionsJSON: options})
+    const data = await passkeyLoginVerify(challengeId, credential)
+    await saveToken(data.token)
+  }).catch(e => {
+    if (e?.name === 'NotAllowedError') {
+      // User cancelled the authenticator prompt - nothing to report.
+      return
+    }
+    if (e?.name) {
+      // Browser/authenticator failure (unsupported key, timeout, ...).
+      ElMessage({message: t('passkeyFailMsg'), type: 'error', plain: true})
+    }
+    // Server errors already show a toast via the axios interceptor.
+  }).finally(() => {
+    passkeyLoading.value = false
+  })
+}
+
 const submit = () => {
 
   if (loginLoading.value) return
@@ -487,6 +546,7 @@ const submit = () => {
 
   const {loginVerify, loginVerifyOpen} = settingStore.settings
   if (needsTurnstile(loginVerify, loginVerifyOpen)) return
+
 
   const token = verifyToken
   loginLoading.value = true
